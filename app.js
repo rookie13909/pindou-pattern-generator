@@ -22,6 +22,7 @@ const replacementOptions = document.querySelector("#replacementOptions");
 const allowedExtensions = new Set(["jpg", "jpeg", "png", "bmp", "svg"]);
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/bmp", "image/svg+xml"]);
 const exportScale = 3;
+const maxExportCanvasSide = 12000;
 const defaultMaxCells = 50;
 const defaultMaxColors = 221;
 const defaultSampleMode = "average";
@@ -534,25 +535,28 @@ function renderPattern(pattern, targetCanvas, scale = 1, fitPreview = false) {
   drawCells(ctx, pattern, layout);
   drawGridLines(ctx, pattern.cols, pattern.rows, layout.gridLeft, layout.gridTop, layout.cell);
   drawSelection(ctx, pattern, layout);
-  drawLegend(ctx, pattern.palette, layout.legend, 0, layout.legendTop, layout.width);
+  drawLegend(ctx, pattern.palette, layout.legend, layout.pagePadding, layout.legendTop, layout.width);
 }
 
 function createPatternLayout(pattern) {
   const cell = chooseCellSize(pattern.cols, pattern.rows);
   const labelBand = cell >= 15 ? 18 : 14;
-  const gridLeft = labelBand;
-  const gridTop = labelBand;
+  const pagePadding = 24;
+  const gridLeft = pagePadding + labelBand;
+  const gridTop = pagePadding + labelBand;
   const gridWidth = pattern.cols * cell;
   const gridHeight = pattern.rows * cell;
   const legend = layoutLegend(pattern.palette, cell);
-  const gridCanvasWidth = gridLeft + gridWidth + labelBand;
-  const legendCanvasWidth = legend.cols * legend.itemWidth + 20;
+  const gridCanvasWidth = gridLeft + gridWidth + labelBand + pagePadding;
+  const legendCanvasWidth = pagePadding * 2 + legend.cols * legend.itemWidth;
   const width = Math.max(gridCanvasWidth, legendCanvasWidth);
   const legendTop = gridTop + gridHeight + labelBand + 18;
-  const height = legendTop + legend.height;
+  const bottomPadding = 28;
+  const height = legendTop + legend.height + bottomPadding;
 
   return {
     cell,
+    pagePadding,
     labelBand,
     gridLeft,
     gridTop,
@@ -560,6 +564,7 @@ function createPatternLayout(pattern) {
     gridHeight,
     legend,
     legendTop,
+    bottomPadding,
     width,
     height,
   };
@@ -639,10 +644,12 @@ function drawSelection(ctx, pattern, layout) {
 
 function drawGridLabels(ctx, pattern, layout) {
   const { cell, labelBand, gridLeft, gridTop, gridWidth, gridHeight } = layout;
+  const labelLeft = gridLeft - labelBand;
+  const labelTop = gridTop - labelBand;
   ctx.fillStyle = "#A9B4F0";
-  ctx.fillRect(gridLeft, 0, gridWidth, labelBand);
+  ctx.fillRect(gridLeft, labelTop, gridWidth, labelBand);
   ctx.fillRect(gridLeft, gridTop + gridHeight, gridWidth, labelBand);
-  ctx.fillRect(0, gridTop, labelBand, gridHeight);
+  ctx.fillRect(labelLeft, gridTop, labelBand, gridHeight);
   ctx.fillRect(gridLeft + gridWidth, gridTop, labelBand, gridHeight);
 
   ctx.fillStyle = "#111111";
@@ -653,13 +660,13 @@ function drawGridLabels(ctx, pattern, layout) {
   for (let col = 0; col < pattern.cols; col += 1) {
     const x = gridLeft + col * cell + cell / 2;
     const label = String(col + 1);
-    ctx.fillText(label, x, labelBand / 2);
+    ctx.fillText(label, x, labelTop + labelBand / 2);
     ctx.fillText(label, x, gridTop + gridHeight + labelBand / 2);
   }
   for (let row = 0; row < pattern.rows; row += 1) {
     const y = gridTop + row * cell + cell / 2;
     const label = String(row + 1);
-    ctx.fillText(label, labelBand / 2, y);
+    ctx.fillText(label, labelLeft + labelBand / 2, y);
     ctx.fillText(label, gridLeft + gridWidth + labelBand / 2, y);
   }
 }
@@ -680,7 +687,7 @@ function layoutLegend(palette, cell) {
 
 function drawLegend(ctx, palette, layout, x0, y0, canvasWidth) {
   ctx.fillStyle = "#FFFFFF";
-  ctx.fillRect(0, y0 - 8, canvasWidth, layout.height + 16);
+  ctx.fillRect(0, y0 - 8, canvasWidth, layout.height + 8);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
@@ -758,7 +765,9 @@ function roundRect(ctx, x, y, w, h, r, fill, stroke = false) {
 function exportPattern() {
   if (!lastPattern) return;
   const outputCanvas = document.createElement("canvas");
-  renderPattern(lastPattern, outputCanvas, exportScale, false);
+  const layout = createPatternLayout(lastPattern);
+  const safeScale = Math.min(exportScale, maxExportCanvasSide / layout.width, maxExportCanvasSide / layout.height);
+  renderPattern(lastPattern, outputCanvas, Math.max(1, safeScale), false);
   const link = document.createElement("a");
   link.download = `${sourceFileName || "拼豆图纸"}_${lastPattern.cols}x${lastPattern.rows}_高清.png`;
   link.href = outputCanvas.toDataURL("image/png");
